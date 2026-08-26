@@ -33,7 +33,11 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
-    buildFeatures { viewBinding = true }
+    buildFeatures {
+        viewBinding = true
+        // BuildConfig.VERSION_NAME is read by the update checker.
+        buildConfig = true
+    }
 }
 
 dependencies {

@@ -67,4 +67,19 @@
 
     </LinearLayout>
 
+    <!-- Spinner shown while verifying pairing / first-loading (avoids a white flash). -->
+    <com.google.android.material.progressindicator.CircularProgressIndicator
+        android:id="@+id/loading"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:background="@color/surface"
+        android:indeterminate="true"
+        app:indicatorColor="@color/primary"
+        app:indicatorSize="64dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:trackThickness="6dp" />
+
 </androidx.constraintlayout.widget.ConstraintLayout>

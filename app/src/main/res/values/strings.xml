@@ -50,4 +50,20 @@
     <string name="unreachable_toast">无法连接到 %1$s</string>
     <string name="retry">重试</string>
     <string name="re_pair">重新配对</string>
+
+    <!-- Update checker -->
+    <string name="update_title">发现新版本</string>
+    <string name="update_message">当前版本 %1$s，最新版本 %2$s。\n是否前往 GitHub 查看更新？</string>
+    <string name="update_go">去更新</string>
+    <string name="update_later">稍后再说</string>
+    <string name="update_open_failed">无法打开更新页面</string>
+
+    <!-- In-app download & install -->
+    <string name="update_install_perm_title">需要安装权限</string>
+    <string name="update_install_perm_message">为完成更新，请允许本应用安装未知来源的应用。</string>
+    <string name="update_go_settings">去设置</string>
+    <string name="update_downloading_title">正在下载更新</string>
+    <string name="update_downloading_message">正在下载新版本 APK…</string>
+    <string name="update_download_failed">下载失败，请重试</string>
+    <string name="update_install_failed">无法启动安装程序</string>
 </resources>

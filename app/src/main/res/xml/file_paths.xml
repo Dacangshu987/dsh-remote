@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- getExternalFilesDir(Download) is where the update APK is saved. -->
+    <external-files-path name="downloads" path="Download/" />
+    <!-- Fallback: app-internal files dir. -->
+    <files-path name="files" path="." />
+    <cache-path name="cache" path="." />
+</paths>

@@ -1,26 +1,30 @@
 # DSH Remote — Android 客户端
 
-将 DeepSeek Harness 的手机端（PWA `/m/` 页面）封装为原生 Android App，并提供原生电源控制。
+将 DeepSeek Harness 的手机端（PWA `/m/` 页面）封装为原生 Android App。扫码/粘贴配对后即可远程访问电脑上的 DSH，支持版本更新与应用内升级。
 
 ## 功能
 
 | 功能 | 说明 |
 |------|------|
-| 远程聊天 | WebView 加载 DSH host 的 `/m/` 独立移动端页面，复用全部已有能力（工作区、会话、聊天、模型、权限、审批等） |
-| **唤醒电脑（WoL）** | 原生 UDP 发送 magic packet，**二次确认**。电脑关机时仍可用（不依赖 DSH 在线） |
-| **关机** | 通过 DSH 插件新增的配对端点 `mobile.shutdown` 让主机执行系统关机，**二次确认** |
-| 文本不自动收起 | 长文本默认展开，不再 45vh 折叠（移动端产物已调高阈值） |
-| **一键下拉到底** | 聊天界面出现悬浮「回到最新」按钮；向上翻阅时自动滚动暂停，点击回到底部 |
+| **首次配对引导** | 第一次启动只有两个选项：**扫描配对二维码** 或 **输入配对链接**；成功配对后直接进入远程访问 |
+| **远程访问** | 全屏 WebView 加载 DSH host 的 `/m/` 独立移动端页面，复用全部能力（工作区、会话、聊天、模型、权限、审批等） |
+| **配对失效自动回引导** | 启动时校验配对状态；cookie 失效/被吊销（含 HTTP 403）时自动回到配对引导页重新配对，不清空已保存配置 |
+| **友好错误页** | 主机连不上时显示中文错误界面，含「重试」与「重新配对」按钮，而非系统默认 WebView 报错页 |
+| **加载动效** | 配对校验/首次加载期间显示居中转圈动画，避免白屏闪烁 |
+| **检测更新** | 启动时查询 GitHub 最新 release，有新版本时提示 |
+| **应用内下载安装** | 点「去更新」→ 校验安装权限 → 下载 APK（带进度条）→ 拉起系统安装器完成升级 |
+| **移动端增强**（服务端插件侧） | 长文本默认不自动收起；聊天界面「一键下拉到底」悬浮按钮 |
 
 ## 项目结构
 
 ```
 app/src/main/java/com/dsh/remote/
-  MainActivity.kt        WebView + 电源悬浮球（唤醒/关机，二次确认）
-  SettingsActivity.kt    host 地址 / MAC / 广播地址配置
-  PowerController.kt     WoL UDP + 关机 HTTP 实现
-  ConfigStore.kt         SharedPreferences 配置存取
-  RemoteApp.kt           Application 占位
+  MainActivity.kt       主界面：全屏 WebView + 配对校验 + 错误页/加载动效 + 更新下载安装
+  OnboardingActivity.kt 首次配对引导页（扫描二维码 / 输入配对链接，二选一）
+  PairingController.kt  配对链接解析、/api/pair/accept、配对状态检测
+  UpdateChecker.kt      检测更新、下载 APK
+  ConfigStore.kt        配置持久化（host）
+  RemoteApp.kt          Application 占位
 ```
 
 ## 环境要求
@@ -28,7 +32,7 @@ app/src/main/java/com/dsh/remote/
 - Android Studio（Hedgehog+）或命令行 Gradle
 - JDK 17
 - Android SDK：`compileSdk 34`，`minSdk 26`（Android 8.0+）
-  - minSdk 26 理由是仅用 adaptive-icon XML，无需二进制 PNG。如需支持 7.0，把 `minSdk` 改回 `24` 并提供 PNG 图标即可。
+  - minSdk 26 的理由是仅用 adaptive-icon XML，无需二进制 PNG。如需支持 7.0，把 `minSdk` 改回 `24` 并提供 PNG 图标。
 
 ## 构建 APK
 
@@ -39,45 +43,59 @@ cd <项目根目录>
 ./gradlew assembleDebug        # 产物: app/build/outputs/apk/debug/app-debug.apk
 ```
 
-或直接用 Android Studio 打开根目录，等待 Gradle 同步后 Run `app`。
+或用 Android Studio 直接打开根目录，等待 Gradle 同步后 Run `app`。
 
-> 仓库未附带 `gradle-wrapper.jar`（本机无 Gradle 工具链，无法生成）。`gradle-wrapper.properties` 已配置 8.7；Android Studio 会提示自动下载 wrapper。若用纯命令行，先确保本机装了 Gradle 8.7，再执行 `gradle wrapper`。
+> 仓库未附带 `gradle-wrapper.jar`（生成环境无 Gradle 工具链）。`gradle-wrapper.properties` 已配置 Gradle 8.7；Android Studio 会提示自动下载 wrapper。若用纯命令行，先装 Gradle 8.7，再执行 `gradle wrapper` 生成 wrapper，或用已安装的 `gradle assembleDebug` 直接构建。
 
 ## 使用步骤
 
 ### 1. 运行 DSH host
 
-启动 dsh web，且**移动端插件已安装并启用**（`@linxin666/dsh-remote-web-ui`）。默认监听如 `http://<电脑IP>:3080`。
+启动 dsh web，并安装启用移动端插件 `@linxin666/dsh-remote-web-ui`。默认监听如 `http://<电脑IP>:3080`。
 
-### 2. 配置 App
+### 2. 配对
 
-打开 App → 右上角「设置」，填写：
+第一次打开 App 会进入配对引导页，只有两个选项（二选一）：
 
-- **DSH 主机地址**：如 `http://192.168.1.100:3080`
-- **电脑 MAC 地址（WoL）**：目标电脑网卡 MAC，如 `AA:BB:CC:DD:EE:FF`
-- **局域网广播地址**：如 `192.168.1.255`（Windows: `ipconfig` 查`子网掩码`推算；或对 `0.0.0.0` / 目标 IP）
+- **扫描配对二维码**：调起相机，扫描桌面端远程面板（DSH Web 侧边栏「远程」入口）显示的 QR 码。
+- **输入配对链接**：粘贴桌面端复制的配对链接（或纯配对令牌）。
 
-### 3. 配对
+配对成功后自动进入远程访问页面。此后每次打开 App 直接进入远程访问。
 
-App 加载主机 `/m/` 页面后，按页面提示扫码/粘贴配对链接完成配对（复用插件原有 QR 配对流程，cookie 存于 WebView）。
+> 电脑关机、网络断开、cookie 过期或被服务端吊销时，App 会回到配对引导页重新配对，或显示「无法连接到主机」的友好错误页（可重试 / 重新配对）。
 
-### 4. 电源控制
+## 更新升级
 
-点右下角电源悬浮球 → 选「唤醒电脑」或「关机」→ **再次确认**后执行。
+App 启动时会自动检查 [Dacangshu987/dsh-remote](https://github.com/Dacangshu987/dsh-remote) 的最新 release：
 
-- **唤醒**：由 App 直接向局域网广播 magic packet，不需要主机在线。
-- **关机**：App 读取 WebView 中的配对 cookie，`POST /m/api/mobile.shutdown`；主机执行 `shutdown /s /t 0`（Windows）或 `shutdown -h now`（POSIX）。
+- 有新版本 → 弹窗提示当前/最新版本。
+- 点「去更新」：
+  1. 校验"安装未知来源应用"权限（Android 8+ 需要，可引导跳转系统设置开启）
+  2. 解析 release 中的 `.apk` asset 并下载（显示进度条）
+  3. 下载完成后拉起系统安装器完成升级
+- 若 release 未附带 `.apk` asset，则退回打开 GitHub Release 页面。
 
-## 前置条件（关机功能）
+> 发布新版本时，请把编译出的 APK 以 `.apk` 结尾命名并上传到对应 release 的 **Assets** 中，App 才能自动下载安装。
 
-关机端点依赖插件已注入 `mobile.shutdown`。本仓库已修改好的插件产物位于：
+## 权限说明
 
-- `node_modules/@linxin666/dsh-remote-web-ui/lib/index.js`（宿主端，新增 `mobile.shutdown` 分支）
-- `node_modules/@linxin666/dsh-remote-web-ui/lib/mobile.js`（移动端，文本阈值 + 下拉到底）
+| 权限 | 用途 |
+|------|------|
+| `INTERNET` | 访问 DSH host 与 GitHub 更新 |
+| `CAMERA` | 扫描配对二维码 |
+| `REQUEST_INSTALL_PACKAGES` | 安装下载的更新 APK |
 
-若你发布/重新构建插件，请在源码侧同步保留这些改动（见下文「源码同步」）。
+## 安全说明
 
-## 安全提示
+- 远程访问依赖插件原有的 **QR 配对 + 配对 cookie** 门禁，只有已配对设备能访问；配对被吊销后 App 会自动要求重新配对。
+- 本 App **不含**电源/关机等高风险操作。
+- 更新仅从你指定的 GitHub 仓库 release 下载，下载前有明确提示与安装权限校验。
 
-- **关机是危险操作**：仅在 App 内做二次确认；服务端默认只接受来自**已配对设备**的请求（复用 `/m/api` 门禁）。
-- WoL 广播只对局域网内开启 WoL 的目标机生效；请按需开启网卡/BIOS 的 Wake-on-LAN。
+## 移动端服务端插件（可选增强）
+
+「长文本不自动收起」「一键下拉到底」这两项在服务端插件 `@linxin666/dsh-remote-web-ui` 侧实现，本仓库同时修改了插件产物与源码：
+
+- 产物（当前运行即生效）：`node_modules/@linxin666/dsh-remote-web-ui/lib/mobile.js`
+- 源码（未来重建保持一致）：`src/mobile/views/ChatView.tsx`、`src/mobile/mobile-styles.ts`
+
+若你不使用这些增强，直接忽略即可，不影响 App 的配对与远程访问。

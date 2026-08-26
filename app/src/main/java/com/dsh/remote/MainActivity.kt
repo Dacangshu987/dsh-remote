@@ -1,8 +1,13 @@
 package com.dsh.remote
 
 import android.app.Activity
+import android.app.ProgressDialog
 import android.content.Intent
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.Settings
 import android.view.View
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
@@ -13,15 +18,19 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.FileProvider
 import com.dsh.remote.databinding.ActivityMainBinding
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import java.io.File
 
 /**
  * Main remote screen: a full-screen WebView loading the host's `/m/` page.
  *
  * First run (no host) and any detected pairing loss go through
  * [OnboardingActivity]. Load failures (host unreachable, HTTP errors) show a
- * friendly overlay with a "retry" and a "re-pair" action instead of the raw
- * WebView error page.
+ * friendly overlay with a "retry" and a "re-pair" action. A centered spinner
+ * covers the pairing-verification / first-load window. New releases are
+ * detected from GitHub and downloaded + installed in-app.
  */
 class MainActivity : AppCompatActivity() {
 
@@ -39,6 +48,7 @@ class MainActivity : AppCompatActivity() {
         config = ConfigStore.load(this)
         setupWebView()
         setupErrorActions()
+        checkForUpdates()
         verifyPairingThenLoad()
     }
 
@@ -57,13 +67,24 @@ class MainActivity : AppCompatActivity() {
                 request: WebResourceRequest,
             ): Boolean = false // stay in the WebView
 
+            override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
+                showLoading()
+            }
+
+            override fun onPageFinished(view: WebView, url: String?) {
+                hideLoading()
+            }
+
             override fun onReceivedError(
                 view: WebView,
                 request: WebResourceRequest,
                 error: WebResourceError,
             ) {
                 // React only to the main page, not to a failing sub-resource.
-                if (request.isForMainFrame) showErrorPage()
+                if (request.isForMainFrame) {
+                    hideLoading()
+                    showErrorPage()
+                }
             }
 
             override fun onReceivedHttpError(
@@ -72,6 +93,7 @@ class MainActivity : AppCompatActivity() {
                 errorResponse: WebResourceResponse,
             ) {
                 if (!request.isForMainFrame) return
+                hideLoading()
                 if (errorResponse.statusCode == 403) {
                     // Pairing was revoked/lost on the host -> go re-pair (keep host/cookie).
                     startOnboarding()
@@ -102,21 +124,114 @@ class MainActivity : AppCompatActivity() {
             startOnboarding()
             return
         }
+        showLoading()
         Thread {
             val status = PairingController.pairingStatus(host)
             runOnUiThread {
                 when (status) {
                     PairingController.PairingStatus.PAIRED -> {
                         hideErrorPage()
+                        // Keep the spinner up; onPageStarted/onPageFinished own it.
                         binding.webView.loadUrl(host + "/m/")
                     }
-                    PairingController.PairingStatus.UNPAIRED ->
+                    PairingController.PairingStatus.UNPAIRED -> {
+                        hideLoading()
                         startOnboarding()
-                    PairingController.PairingStatus.UNAVAILABLE ->
+                    }
+                    PairingController.PairingStatus.UNAVAILABLE -> {
+                        hideLoading()
                         showErrorPage()
+                    }
                 }
             }
         }.start()
+    }
+
+    /** Background check for a newer release; prompts if one exists. */
+    private fun checkForUpdates() {
+        UpdateChecker.check(BuildConfig.VERSION_NAME) { info ->
+            runOnUiThread {
+                if (info.isNewer) {
+                    MaterialAlertDialogBuilder(this)
+                        .setTitle(R.string.update_title)
+                        .setMessage(getString(R.string.update_message, BuildConfig.VERSION_NAME, info.latestVersion))
+                        .setPositiveButton(R.string.update_go) { _, _ -> goUpdate(info) }
+                        .setNegativeButton(R.string.update_later, null)
+                        .show()
+                }
+            }
+        }
+    }
+
+    /** Download the release APK and install it (or fall back to the release page). */
+    private fun goUpdate(info: UpdateChecker.UpdateInfo) {
+        // Android 8+ requires the "install unknown apps" capability per app.
+        if (Build.VERSION.SDK_INT >= 26 && !packageManager.canRequestPackageInstalls()) {
+            MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.update_install_perm_title)
+                .setMessage(R.string.update_install_perm_message)
+                .setPositiveButton(R.string.update_go_settings) { _, _ ->
+                    try {
+                        startActivity(
+                            Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName"))
+                        )
+                    } catch (_: Exception) {
+                        Toast.makeText(this, R.string.update_open_failed, Toast.LENGTH_LONG).show()
+                    }
+                }
+                .setNegativeButton(R.string.update_later, null)
+                .show()
+            return
+        }
+
+        if (info.apkUrl.isEmpty()) {
+            // No APK attached to the release: open the release page instead.
+            try {
+                val page = info.releaseUrl.ifEmpty { "https://github.com/${UpdateChecker.REPO}/releases" }
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(page)))
+            } catch (_: Exception) {
+                Toast.makeText(this, R.string.update_open_failed, Toast.LENGTH_LONG).show()
+            }
+            return
+        }
+
+        downloadAndInstall(info.apkUrl)
+    }
+
+    /** Download with a horizontal progress dialog, then install. */
+    private fun downloadAndInstall(apkUrl: String) {
+        val dir = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: filesDir
+        val dest = File(dir, "dsh-remote-update.apk")
+        val dialog = ProgressDialog(this)
+        dialog.setTitle(R.string.update_downloading_title)
+        dialog.setMessage(getString(R.string.update_downloading_message))
+        dialog.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL)
+        dialog.setCancelable(false)
+        dialog.show()
+        Thread {
+            val ok = UpdateChecker.download(apkUrl, dest) { p ->
+                runOnUiThread { dialog.progress = p }
+            }
+            runOnUiThread {
+                dialog.dismiss()
+                if (ok) installApk(dest)
+                else Toast.makeText(this, R.string.update_download_failed, Toast.LENGTH_LONG).show()
+            }
+        }.start()
+    }
+
+    /** Hand the downloaded APK to the system installer via FileProvider. */
+    private fun installApk(file: File) {
+        val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/vnd.android.package-archive")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        try {
+            startActivity(intent)
+        } catch (_: Exception) {
+            Toast.makeText(this, R.string.update_install_failed, Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun startOnboarding() {
@@ -144,6 +259,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun hideErrorPage() {
         binding.errorView.visibility = View.GONE
+    }
+
+    private fun showLoading() {
+        binding.loading.visibility = View.VISIBLE
+    }
+
+    private fun hideLoading() {
+        binding.loading.visibility = View.GONE
     }
 
     override fun onBackPressed() {
