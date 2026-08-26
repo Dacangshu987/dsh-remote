@@ -1,0 +1,22 @@
+﻿# Gradle
+.gradle/
+build/
+
+# Local config (contains SDK path, machine-specific)
+local.properties
+
+# IDE
+.idea/
+*.iml
+
+# Signing keystores
+*.jks
+*.keystore
+keystore.properties
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
