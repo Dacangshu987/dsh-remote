@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools">
 
-    <style name="Theme.DeepSeekRemote" parent="Theme.MaterialComponents.Light.DarkActionBar">
+    <style name="Theme.DeepSeekRemote" parent="Theme.MaterialComponents.Light.NoActionBar">
         <item name="colorPrimary">@color/primary</item>
         <item name="colorPrimaryDark">@color/primary_dark</item>
         <item name="colorAccent">@color/primary</item>
@@ -10,7 +10,7 @@
         <item name="android:windowLightStatusBar">false</item>
     </style>
 
-    <style name="Theme.DeepSeekRemote.Settings" parent="Theme.MaterialComponents.Light.DarkActionBar">
+    <style name="Theme.DeepSeekRemote.Settings" parent="Theme.MaterialComponents.Light.NoActionBar">
         <item name="colorPrimary">@color/primary</item>
         <item name="colorPrimaryDark">@color/primary_dark</item>
         <item name="colorAccent">@color/primary</item>

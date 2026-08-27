@@ -13,7 +13,7 @@
 | **加载动效** | 配对校验/首次加载期间显示居中转圈动画，避免白屏闪烁 |
 | **检测更新** | 启动时查询 GitHub 最新 release，有新版本时提示 |
 | **应用内下载安装** | 点「去更新」→ 校验安装权限 → 下载 APK（带进度条）→ 拉起系统安装器完成升级 |
-| **移动端增强**（服务端插件侧） | 长文本默认不自动收起；聊天界面「一键下拉到底」悬浮按钮 |
+| **移动端增强**（服务端插件侧） | 长文本默认不自动收起 |
 
 ## 项目结构
 
@@ -93,7 +93,7 @@ App 启动时会自动检查 [Dacangshu987/dsh-remote](https://github.com/Dacang
 
 ## 移动端服务端插件（可选增强）
 
-「长文本不自动收起」「一键下拉到底」这两项在服务端插件 `@linxin666/dsh-remote-web-ui` 侧实现，本仓库同时修改了插件产物与源码：
+「长文本不自动收起」这项在服务端插件 `@linxin666/dsh-remote-web-ui` 侧实现，本仓库同时修改了插件产物与源码：
 
 - 产物（当前运行即生效）：`node_modules/@linxin666/dsh-remote-web-ui/lib/mobile.js`
 - 源码（未来重建保持一致）：`src/mobile/views/ChatView.tsx`、`src/mobile/mobile-styles.ts`

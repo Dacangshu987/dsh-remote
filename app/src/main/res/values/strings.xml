@@ -66,4 +66,20 @@
     <string name="update_downloading_message">正在下载新版本 APK…</string>
     <string name="update_download_failed">下载失败，请重试</string>
     <string name="update_install_failed">无法启动安装程序</string>
+
+    <!-- Settings -->
+    <string name="settings_check_update">检查更新</string>
+    <string name="settings_update_status_idle">点击检测最新版本</string>
+    <string name="settings_update_checking">检测中…</string>
+    <string name="settings_update_up_to_date">已是最新版本</string>
+    <string name="settings_version_format">版本：%1$s</string>
+
+    <!-- Notification settings -->
+    <string name="settings_notification_title">通知设置</string>
+    <string name="notify_turn_end">模型输出完毕通知</string>
+    <string name="notify_approval">需要用户回答通知</string>
+    <string name="notify_stall">输出意外暂停通知</string>
+    <string name="notify_turn_start">会话开始输出通知</string>
+    <string name="notify_offline">主机离线监测通知</string>
+    <string name="refresh">刷新页面</string>
 </resources>

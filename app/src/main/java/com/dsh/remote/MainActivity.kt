@@ -1,8 +1,10 @@
 package com.dsh.remote
 
+import android.Manifest
 import android.app.Activity
 import android.app.ProgressDialog
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -18,6 +20,8 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.dsh.remote.databinding.ActivityMainBinding
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -36,9 +40,12 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var config: AppConfig
+    private var eventMonitor: EventMonitor? = null
+    private var pendingSessionId: String? = null
 
     companion object {
         private const val REQ_ONBOARD = 1001
+        const val EXTRA_SESSION_ID = "dsh_session_id"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -48,8 +55,21 @@ class MainActivity : AppCompatActivity() {
         config = ConfigStore.load(this)
         setupWebView()
         setupErrorActions()
+        binding.btnSettings.setOnClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java))
+        }
+        binding.btnRefresh.setOnClickListener {
+            binding.webView.reload()
+        }
         checkForUpdates()
         verifyPairingThenLoad()
+        handleNotificationIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleNotificationIntent(intent)
     }
 
     private fun setupWebView() {
@@ -73,6 +93,7 @@ class MainActivity : AppCompatActivity() {
 
             override fun onPageFinished(view: WebView, url: String?) {
                 hideLoading()
+                applyPendingSessionId()
             }
 
             override fun onReceivedError(
@@ -133,13 +154,18 @@ class MainActivity : AppCompatActivity() {
                         hideErrorPage()
                         // Keep the spinner up; onPageStarted/onPageFinished own it.
                         binding.webView.loadUrl(host + "/m/")
+                        // Start background event monitoring (SSE + heartbeat).
+                        requestNotificationPermission()
+                        eventMonitor = EventMonitor(this@MainActivity, host).also { it.start() }
                     }
                     PairingController.PairingStatus.UNPAIRED -> {
                         hideLoading()
+                        eventMonitor?.stop(); eventMonitor = null
                         startOnboarding()
                     }
                     PairingController.PairingStatus.UNAVAILABLE -> {
                         hideLoading()
+                        eventMonitor?.stop(); eventMonitor = null
                         showErrorPage()
                     }
                 }
@@ -273,8 +299,49 @@ class MainActivity : AppCompatActivity() {
         if (binding.webView.canGoBack()) binding.webView.goBack() else super.onBackPressed()
     }
 
+    override fun onResume() {
+        super.onResume()
+        eventMonitor?.isForeground = true
+    }
+
+    override fun onPause() {
+        super.onPause()
+        eventMonitor?.isForeground = false
+    }
+
     override fun onDestroy() {
+        eventMonitor?.stop()
+        eventMonitor = null
         binding.webView.destroy()
         super.onDestroy()
+    }
+
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+            != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 2001)
+        }
+    }
+
+    /** Extract sessionId from a notification-triggered Intent. */
+    private fun handleNotificationIntent(intent: Intent?) {
+        val sid = intent?.getStringExtra(EXTRA_SESSION_ID)
+        if (sid.isNullOrEmpty()) return
+        pendingSessionId = sid
+        applyPendingSessionId()
+    }
+
+    /** If the WebView is loaded and ready, navigate to the session. */
+    private fun applyPendingSessionId() {
+        val sid = pendingSessionId ?: return
+        if (binding.webView.url?.contains("/m/") != true) return
+        pendingSessionId = null
+        val json = "window.__dsh_navigateToSession = { sessionId: \"${escapeJs(sid)}\" }"
+        binding.webView.evaluateJavascript(json, null)
+    }
+
+    private fun escapeJs(s: String): String {
+        return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("'", "\\'").replace("\n", "\\n")
     }
 }
