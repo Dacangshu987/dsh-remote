@@ -7,8 +7,6 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <!-- Required to install the downloaded update APK. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
-    <!-- Required to show notifications (Android 13+). -->
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".RemoteApp"
@@ -61,8 +59,5 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
-
-        <!-- MainActivity already uses INTERNET; allow opening http:// for the
-             WebView in a separate process? No — keep single process. -->
     </application>
 </manifest>

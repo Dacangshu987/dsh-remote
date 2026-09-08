@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources xmlns:tools="http://schemas.android.com/tools">
+<resources>
 
     <style name="Theme.DeepSeekRemote" parent="Theme.MaterialComponents.Light.NoActionBar">
         <item name="colorPrimary">@color/primary</item>
@@ -8,12 +8,6 @@
         <!-- Status bar matches the mobile page shell background. -->
         <item name="android:statusBarColor">@color/accent</item>
         <item name="android:windowLightStatusBar">false</item>
-    </style>
-
-    <style name="Theme.DeepSeekRemote.Settings" parent="Theme.MaterialComponents.Light.NoActionBar">
-        <item name="colorPrimary">@color/primary</item>
-        <item name="colorPrimaryDark">@color/primary_dark</item>
-        <item name="colorAccent">@color/primary</item>
     </style>
 
 </resources>

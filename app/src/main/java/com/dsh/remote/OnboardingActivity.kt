@@ -13,14 +13,17 @@ import com.journeyapps.barcodescanner.CaptureActivity
 
 /**
  * First-run pairing screen. Shows exactly two options: scan the pairing QR
- * code, or paste the pairing link. On a successful accept the pairing cookie
- * is stored and the activity returns OK so MainActivity can load the remote
- * page directly.
+ * code, or paste the pairing link. On success the host base URL is persisted
+ * and the full pairing URL is handed back so MainActivity can load it in the
+ * WebView (the plugin performs the accept handshake in-browser).
  */
 class OnboardingActivity : AppCompatActivity() {
 
+    companion object {
+        const val EXTRA_PAIR_URL = "dsh_pair_url"
+    }
+
     private lateinit var binding: ActivityOnboardingBinding
-    private var busy = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -32,7 +35,6 @@ class OnboardingActivity : AppCompatActivity() {
     }
 
     private fun startScan() {
-        if (busy) return
         IntentIntegrator(this)
             .setCaptureActivity(CaptureActivity::class.java)
             .setOrientationLocked(false)
@@ -42,7 +44,6 @@ class OnboardingActivity : AppCompatActivity() {
     }
 
     private fun promptForLink() {
-        if (busy) return
         val input = EditText(this).apply {
             hint = getString(R.string.onboarding_link_hint)
             inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI
@@ -74,42 +75,19 @@ class OnboardingActivity : AppCompatActivity() {
     }
 
     private fun handleLink(raw: String) {
-        if (busy) return
         val target = PairingController.parsePairLink(raw)
         if (target == null) {
             toast(R.string.onboarding_link_invalid)
             return
         }
-        busy = true
-        binding.btnScan.isEnabled = false
-        binding.btnPaste.isEnabled = false
-
-        // Do the accept off the UI thread.
-        Thread {
-            val outcome = PairingController.accept(target.origin, target.token)
-            runOnUiThread {
-                busy = false
-                binding.btnScan.isEnabled = true
-                binding.btnPaste.isEnabled = true
-                if (outcome == "ok") {
-                    // Save the host so MainActivity loads the remote page directly.
-                    val existing = ConfigStore.load(this)
-                    ConfigStore.save(this, existing.copy(host = target.origin))
-                    toast(R.string.onboarding_success)
-                    setResult(Activity.RESULT_OK)
-                    finish()
-                } else {
-                    toast(outcome)
-                }
-            }
-        }.start()
+        // Persist the host base URL; MainActivity loads the pairing URL.
+        val existing = ConfigStore.load(this)
+        ConfigStore.save(this, existing.copy(host = target.origin))
+        setResult(Activity.RESULT_OK, Intent().putExtra(EXTRA_PAIR_URL, target.pairUrl))
+        finish()
     }
 
     private fun toast(resId: Int) {
         Toast.makeText(this, resId, Toast.LENGTH_LONG).show()
-    }
-
-    private fun toast(message: String) {
-        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
     }
 }

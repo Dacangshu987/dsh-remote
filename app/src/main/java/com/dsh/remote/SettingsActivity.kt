@@ -27,28 +27,6 @@ class SettingsActivity : AppCompatActivity() {
         binding.updateStatus.text = getString(R.string.settings_update_status_idle)
 
         binding.rowUpdate.setOnClickListener { checkForUpdates() }
-
-        loadNotificationPrefs()
-    }
-
-    private fun loadNotificationPrefs() {
-        val s = NotificationPrefs.load(this)
-        binding.switchTurnEnd.isChecked = s.turnEnd
-        binding.switchApproval.isChecked = s.approval
-        binding.switchStall.isChecked = s.stall
-        binding.switchTurnStart.isChecked = s.turnStart
-        binding.switchOffline.isChecked = s.offline
-
-        binding.switchTurnEnd.setOnCheckedChangeListener { _, v -> saveBit { it.copy(turnEnd = v) } }
-        binding.switchApproval.setOnCheckedChangeListener { _, v -> saveBit { it.copy(approval = v) } }
-        binding.switchStall.setOnCheckedChangeListener { _, v -> saveBit { it.copy(stall = v) } }
-        binding.switchTurnStart.setOnCheckedChangeListener { _, v -> saveBit { it.copy(turnStart = v) } }
-        binding.switchOffline.setOnCheckedChangeListener { _, v -> saveBit { it.copy(offline = v) } }
-    }
-
-    private fun saveBit(transform: (NotificationPrefs.Settings) -> NotificationPrefs.Settings) {
-        val current = NotificationPrefs.load(this)
-        NotificationPrefs.save(this, transform(current))
     }
 
     private fun checkForUpdates() {
