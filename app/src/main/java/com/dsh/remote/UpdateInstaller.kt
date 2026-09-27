@@ -85,12 +85,18 @@ class UpdateInstaller(private val activity: Activity) {
         progressDialog = dialog
 
         Thread {
-            val ok = UpdateChecker.download(apkUrl, dest) { p ->
+            val failure = UpdateChecker.download(apkUrl, dest) { p ->
                 activity.runOnUiThread { if (!activity.isFinishing) dialog.progress = p }
             }
             activity.runOnUiThread {
                 dismissProgress()
-                if (ok) installApk(dest) else toast(R.string.update_download_failed)
+                if (failure == null) {
+                    installApk(dest)
+                } else {
+                    // Surface why: on blocked networks the message is the only
+                    // clue that the URL, not the app, is the problem.
+                    toast(activity.getString(R.string.update_download_failed, failure))
+                }
             }
         }.start()
     }
@@ -121,5 +127,9 @@ class UpdateInstaller(private val activity: Activity) {
 
     private fun toast(resId: Int) {
         Toast.makeText(activity, resId, Toast.LENGTH_LONG).show()
+    }
+
+    private fun toast(text: String) {
+        Toast.makeText(activity, text, Toast.LENGTH_LONG).show()
     }
 }

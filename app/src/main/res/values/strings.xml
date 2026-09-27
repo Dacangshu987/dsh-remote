@@ -51,7 +51,7 @@
     <string name="update_go_settings">去设置</string>
     <string name="update_downloading_title">正在下载更新</string>
     <string name="update_downloading_message">正在下载新版本 APK…</string>
-    <string name="update_download_failed">下载失败，请重试</string>
+    <string name="update_download_failed">下载失败：%1$s</string>
     <string name="update_install_failed">无法启动安装程序</string>
 
     <!-- Background watch service -->

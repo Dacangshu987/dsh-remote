@@ -150,18 +150,51 @@ object UpdateChecker {
 
     /**
      * Download a file with an on-thread progress callback (0..100).
-     * Returns true on success. Runs on the calling thread.
+     *
+     * @returns null on success, or a short reason for the failure. The reason
+     *   matters: a blocked host (GitHub is unreachable on some networks while
+     *   its API still answers) and a rejected status look identical to a user
+     *   otherwise, and the URL — not the app — is usually what has to change.
      */
-    fun download(url: String, dest: File, onProgress: (Int) -> Unit = {}): Boolean {
+    fun download(url: String, dest: File, onProgress: (Int) -> Unit = {}): String? {
+        val direct = fetchBytes(url, dest, onProgress)
+        if (direct == null) {
+            Log.i(TAG, "download succeeded from $url")
+            return null
+        }
+
+        // Retry through wherever the URL redirects to. Release assets live on
+        // GitHub's object CDN, and networks that block `github.com` frequently
+        // still serve that CDN — so resolving around the blocked host is often
+        // the difference between a working update and none at all.
+        val resolved = resolveFinalUrl(url)
+        if (resolved != null && resolved != url && resolved.startsWith("http")) {
+            Log.i(TAG, "retrying download via $resolved")
+            val viaCdn = fetchBytes(resolved, dest, onProgress)
+            if (viaCdn == null) {
+                Log.i(TAG, "download succeeded via redirect to $resolved")
+                return null
+            }
+            return viaCdn
+        }
+        return direct
+    }
+
+    /** @returns null on success, otherwise a short failure reason. */
+    private fun fetchBytes(url: String, dest: File, onProgress: (Int) -> Unit): String? {
         var conn: HttpURLConnection? = null
         return try {
             conn = open(url)
-            if (conn.responseCode !in 200..299) return false
+            val code = conn.responseCode
+            if (code !in 200..299) {
+                Log.w(TAG, "download rejected: HTTP $code for $url")
+                return "HTTP $code"
+            }
             val total = conn.contentLengthLong
+            var written = 0L
             conn.inputStream.use { input ->
                 dest.outputStream().use { out ->
                     val buf = ByteArray(8192)
-                    var written = 0L
                     while (true) {
                         val n = input.read(buf)
                         if (n < 0) break
@@ -171,10 +204,41 @@ object UpdateChecker {
                     }
                 }
             }
-            true
-        } catch (_: Exception) {
+            if (written == 0L) {
+                Log.w(TAG, "download produced 0 bytes from $url")
+                dest.delete()
+                return "empty response"
+            }
+            null
+        } catch (e: Exception) {
+            Log.w(TAG, "download failed from $url", e)
             dest.delete()
-            false
+            // The class name is what distinguishes "host unreachable" from a
+            // TLS or protocol problem when read back from a screenshot.
+            "${e.javaClass.simpleName}: ${e.message.orEmpty()}".take(120)
+        } finally {
+            // Reading the headers of a failed request can itself throw; a
+            // cleanup failure must not mask the real reason.
+            try {
+                conn?.disconnect()
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    /** The URL after following redirects, or null when it cannot be reached. */
+    private fun resolveFinalUrl(url: String): String? {
+        var conn: HttpURLConnection? = null
+        return try {
+            conn = open(url)
+            conn.instanceFollowRedirects = true
+            // A ranged GET keeps this to a single byte instead of the whole APK.
+            conn.setRequestProperty("Range", "bytes=0-0")
+            conn.connect()
+            conn.url?.toString()
+        } catch (e: Exception) {
+            Log.w(TAG, "cannot resolve final url for $url", e)
+            null
         } finally {
             conn?.disconnect()
         }

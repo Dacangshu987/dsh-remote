@@ -33,6 +33,14 @@ class DebugCheckReceiver : BroadcastReceiver() {
             fakeEvent(context, intent.getStringExtra("sessionId").orEmpty())
             return
         }
+        if (intent.action == ACTION_UPDATECHECK) {
+            updateCheck(context)
+            return
+        }
+        if (intent.action == ACTION_DOWNLOADCHECK) {
+            downloadCheck(context)
+            return
+        }
         if (intent.action != ACTION_SELFCHECK) return
 
         val url = intent.getStringExtra("url")
@@ -50,6 +58,65 @@ class DebugCheckReceiver : BroadcastReceiver() {
             } catch (e: Exception) {
                 Log.e(TAG, "self-check failed", e)
             } finally {
+                pending.finish()
+            }
+        }
+    }
+
+    /**
+     * Run the real update check and dump exactly what it concluded.
+     *
+     * Built because "why did it offer me a version I already have?" cannot be
+     * answered from the outside: it needs the installed version string, the
+     * resolved latest version, and the comparison result together.
+     */
+    private fun updateCheck(context: Context) {
+        val pending = goAsync()
+        UpdateChecker.check(BuildConfig.VERSION_NAME) { info ->
+            try {
+                val line = buildString {
+                    append("installed=").append(BuildConfig.VERSION_NAME)
+                    append(" code=").append(BuildConfig.VERSION_CODE)
+                    append(" | latest=").append(info.latestVersion.ifEmpty { "<none>" })
+                    append(" | isNewer=").append(info.isNewer)
+                    append(" | cmp=").append(UpdateChecker.compareVersions(info.latestVersion, BuildConfig.VERSION_NAME))
+                    append(" | apk=").append(info.apkUrl.ifEmpty { "<none>" })
+                }
+                Log.i(TAG, "update-check: $line")
+                context.getFileStreamPath("updatecheck.txt").writeText(line)
+            } catch (e: Exception) {
+                Log.e(TAG, "update-check dump failed", e)
+            } finally {
+                pending.finish()
+            }
+        }
+    }
+
+    /**
+     * Run the full update check **and** try the download it points at, writing
+     * the exact outcome of both.
+     *
+     * Built after "built-in downloader fails" turned out to be a blocked host
+     * rather than a code fault: the check only reads `api.github.com`, while the
+     * asset lives on `github.com`, and those two are filtered differently on
+     * some networks. Seeing both results together is what makes that visible.
+     */
+    private fun downloadCheck(context: Context) {
+        val pending = goAsync()
+        UpdateChecker.check(BuildConfig.VERSION_NAME) { info ->
+            val dest = java.io.File(context.cacheDir, "dlprobe.apk")
+            val failure = UpdateChecker.download(info.apkUrl.ifEmpty { "about:blank" }, dest)
+            val line = buildString {
+                append("latest=").append(info.latestVersion.ifEmpty { "<none>" })
+                append(" | apkUrl=").append(info.apkUrl.ifEmpty { "<none>" })
+                append(" | download=").append(failure ?: "OK")
+                append(" | bytes=").append(if (dest.isFile) dest.length() else 0)
+            }
+            try {
+                Log.i(TAG, "download-check: $line")
+                context.getFileStreamPath("downloadcheck.txt").writeText(line)
+            } finally {
+                dest.delete()
                 pending.finish()
             }
         }
@@ -107,5 +174,7 @@ class DebugCheckReceiver : BroadcastReceiver() {
         const val ACTION_SELFCHECK = "com.dsh.remote.SELFCHECK"
         const val ACTION_COOKIECHECK = "com.dsh.remote.COOKIECHECK"
         const val ACTION_FAKEEVENT = "com.dsh.remote.FAKEEVENT"
+        const val ACTION_UPDATECHECK = "com.dsh.remote.UPDATECHECK"
+        const val ACTION_DOWNLOADCHECK = "com.dsh.remote.DOWNLOADCHECK"
     }
 }

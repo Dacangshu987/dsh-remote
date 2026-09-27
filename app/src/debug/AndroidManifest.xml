@@ -10,6 +10,8 @@
                 <action android:name="com.dsh.remote.SELFCHECK" />
                 <action android:name="com.dsh.remote.COOKIECHECK" />
                 <action android:name="com.dsh.remote.FAKEEVENT" />
+                <action android:name="com.dsh.remote.UPDATECHECK" />
+                <action android:name="com.dsh.remote.DOWNLOADCHECK" />
             </intent-filter>
         </receiver>
     </application>
