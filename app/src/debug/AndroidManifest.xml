@@ -12,6 +12,8 @@
                 <action android:name="com.dsh.remote.FAKEEVENT" />
                 <action android:name="com.dsh.remote.UPDATECHECK" />
                 <action android:name="com.dsh.remote.DOWNLOADCHECK" />
+                <action android:name="com.dsh.remote.POSTALERT" />
+                <action android:name="com.dsh.remote.CLEARALERTS" />
             </intent-filter>
         </receiver>
     </application>

@@ -41,6 +41,16 @@ class DebugCheckReceiver : BroadcastReceiver() {
             downloadCheck(context)
             return
         }
+        if (intent.action == ACTION_POSTALERT) {
+            postAlertViaService(context, intent.getStringExtra("sessionId").orEmpty())
+            return
+        }
+        if (intent.action == ACTION_CLEARALERTS) {
+            val cleared = HostWatchService.debugClearAlerts()
+            Log.i(TAG, "clear requested, service present=$cleared")
+            context.getFileStreamPath("clearalerts.txt").writeText("servicePresent=$cleared")
+            return
+        }
         if (intent.action != ACTION_SELFCHECK) return
 
         val url = intent.getStringExtra("url")
@@ -61,6 +71,19 @@ class DebugCheckReceiver : BroadcastReceiver() {
                 pending.finish()
             }
         }
+    }
+
+    /**
+     * Start the watcher (if needed) and have it post an alert, so the
+     * "clear on app open" path can be exercised without a live host.
+     */
+    private fun postAlertViaService(context: Context, sessionId: String) {
+        val id = sessionId.ifBlank { "debug-alert" }
+        HostWatchService.start(context)
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            val posted = HostWatchService.debugPostAlert(id)
+            Log.i(TAG, "alert posted via service=$posted for $id")
+        }, 3_000)
     }
 
     /**
@@ -176,5 +199,7 @@ class DebugCheckReceiver : BroadcastReceiver() {
         const val ACTION_FAKEEVENT = "com.dsh.remote.FAKEEVENT"
         const val ACTION_UPDATECHECK = "com.dsh.remote.UPDATECHECK"
         const val ACTION_DOWNLOADCHECK = "com.dsh.remote.DOWNLOADCHECK"
+        const val ACTION_POSTALERT = "com.dsh.remote.POSTALERT"
+        const val ACTION_CLEARALERTS = "com.dsh.remote.CLEARALERTS"
     }
 }

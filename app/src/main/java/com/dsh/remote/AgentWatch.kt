@@ -31,6 +31,78 @@ class AgentWatch(context: Context) {
     /** sessionId -> last time an error / "needs you" notification fired. */
     private val lastNotifiedAt = mutableMapOf<String, Long>()
 
+    /**
+     * Session ids we have put an alert on screen for.
+     *
+     * Kept in memory (and mirrored to disk) because the notifications cannot be
+     * found any other way: `NotificationManager.activeNotifications` is
+     * documented to return an empty list on API 31+ — it reads `/proc`, which
+     * apps can no longer see — verified returning zero on Android 12, so
+     * clearing by enumeration silently does nothing on a modern phone. The
+     * notification id is the session id's hash, so this set is enough to cancel
+     * them exactly.
+     */
+    private val alertedSessions = mutableSetOf<String>()
+
+    /** Ids of every alert currently on screen, for cancellation. */
+    fun alertedNotificationIds(): List<Int> = alertedSessions.map { it.hashCode() }
+
+    /** Forget the tracked alerts after they have been cancelled. */
+    fun forgetAlerts() {
+        alertedSessions.clear()
+    }
+
+    companion object {
+        private const val PREFS = "dsh_remote_watch"
+        private const val KEY_RUNNING = "running_sessions"
+        private const val KEY_TITLES = "session_titles"
+        private const val KEY_ALERTED = "alerted_sessions"
+        private const val MAX_TITLES = 80
+        private const val ERROR_COOLDOWN_MS = 120_000L
+        private const val NEEDS_YOU_COOLDOWN_MS = 60_000L
+        private const val NEEDS_APPROVAL = "approval"
+        private const val NEEDS_ANSWER = "question"
+
+        /**
+         * Notification ids of alerts still on screen, read straight from disk.
+         *
+         * A static read on purpose: `AgentWatch` keeps its set in memory, and a
+         * freshly constructed instance loads the file during construction —
+         * which is a snapshot from before a *different* instance in the same
+         * process posted anything. The app-foreground cleanup path runs
+         * exactly in that situation, so it must not depend on instance state.
+         */
+        fun pendingAlertIds(context: Context): List<Int> {
+            val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(KEY_ALERTED, null) ?: return emptyList()
+            return try {
+                val json = JSONObject(raw)
+                json.keys().asSequence().map { it.hashCode() }.toList()
+            } catch (_: Exception) {
+                emptyList()
+            }
+        }
+    }
+
+    private fun loadPersistedAlerts() {
+        val raw = prefs.getString(KEY_ALERTED, null) ?: return
+        try {
+            val json = JSONObject(raw)
+            // Union, not replace: the persisted set is the source of truth for
+            // alerts raised by *other* instances in this process, and clobbering
+            // in-memory entries would lose alerts this instance just posted.
+            for (key in json.keys()) alertedSessions.add(key)
+        } catch (_: Exception) {
+            prefs.edit().remove(KEY_ALERTED).apply()
+        }
+    }
+
+    private fun persistAlerted() {
+        val json = JSONObject()
+        for (id in alertedSessions) json.put(id, true)
+        prefs.edit().putString(KEY_ALERTED, json.toString()).apply()
+    }
+
     /** Raw JSON of the running map, so the watermark survives a restart. */
     private fun loadPersistedRunning() {
         val raw = prefs.getString(KEY_RUNNING, null) ?: return
@@ -120,6 +192,8 @@ class AgentWatch(context: Context) {
         // Only the true -> false edge, and only when the session was genuinely
         // busy — a session marked stopped that never ran is just bookkeeping.
         if (wasRunning && !nowRunning) {
+            alertedSessions.add(sessionId)
+            persistAlerted()
             notifications.notifyTurnFinished(sessionId, titleOf(sessionId))
         }
     }
@@ -128,6 +202,9 @@ class AgentWatch(context: Context) {
         val sessionId = args.getOrNull(0) as? String ?: return
         val message = args.getOrNull(1) as? String ?: return
         if (!debounce(sessionId, ERROR_COOLDOWN_MS)) return
+        // The error alert uses the session id plus one.
+        alertedSessions.add(sessionId)
+        persistAlerted()
         notifications.notifyError(sessionId, titleOf(sessionId), message)
     }
 
@@ -164,16 +241,6 @@ class AgentWatch(context: Context) {
 
     init {
         loadPersistedRunning()
-    }
-
-    private companion object {
-        const val PREFS = "dsh_remote_watch"
-        const val KEY_RUNNING = "running_sessions"
-        const val KEY_TITLES = "session_titles"
-        const val MAX_TITLES = 80
-        const val ERROR_COOLDOWN_MS = 120_000L
-        const val NEEDS_YOU_COOLDOWN_MS = 60_000L
-        const val NEEDS_APPROVAL = "approval"
-        const val NEEDS_ANSWER = "question"
+        loadPersistedAlerts()
     }
 }

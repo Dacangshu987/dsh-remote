@@ -52,6 +52,11 @@ class HostWatchService : Service() {
     private val notifications by lazy { NotificationHelper(this) }
     private val watch by lazy { AgentWatch(this) }
 
+    override fun onCreate() {
+        super.onCreate()
+        instance = this
+    }
+
     private var muxJob: Job? = null
     private var pollJob: Job? = null
 
@@ -78,6 +83,21 @@ class HostWatchService : Service() {
         if (pollJob == null) startPollLoop()
         // Restart with a null intent after a process kill: keep watching.
         return START_STICKY
+    }
+
+    /**
+     * Drop this service's stale alerts.
+     *
+     * Static so the caller does not have to start or bind the service just to
+     * clear notifications — and, more importantly, so the ids come from the one
+     * instance that actually posted them. A freshly constructed tracker starts
+     * empty, which is why clearing from elsewhere silently did nothing.
+     */
+    private fun clearPostedAlerts() {
+        val ids = watch.alertedNotificationIds()
+        notifications.clearAlerts(ids)
+        watch.forgetAlerts()
+        Log.i(TAG, "cleared ${ids.size} session alert(s)")
     }
 
     private fun startInForeground(text: String) {
@@ -349,6 +369,7 @@ class HostWatchService : Service() {
     }
 
     override fun onDestroy() {
+        if (instance === this) instance = null
         scope.cancel()
         super.onDestroy()
     }
@@ -359,6 +380,16 @@ class HostWatchService : Service() {
         private const val RETRY_WITHOUT_CREDENTIAL_MS = 30_000L
         private const val KEY_HOST = "host"
         private const val KEY_TRANSPORT = "transport"
+
+        /**
+         * The live service, if any.
+         *
+         * Used only to clear this app's own notifications, which needs the
+         * instance that posted them (a fresh tracker holds nothing). Cleared in
+         * [onDestroy] so a finished service is never retained.
+         */
+        @Volatile
+        private var instance: HostWatchService? = null
 
         /** Foreground-notice states; one text each, shown once per transition. */
         private const val STATE_CONNECTED = "connected"
@@ -374,6 +405,33 @@ class HostWatchService : Service() {
         private const val DEVICE_COOKIE = "dsh_pair"
 
         const val ACTION_STOP = "com.dsh.remote.action.STOP_WATCH"
+
+        /**
+         * Ask the running watcher to drop its stale alerts.
+         *
+         * A no-op when nothing is running, which is correct: with no watcher
+         * there are no alerts of ours to remove. Deliberately not routed through
+         * `startService`, which would spin the service up (and put its permanent
+         * notice on screen) just to clear nothing.
+         */
+        fun clearAlerts(context: Context) {
+            instance?.clearPostedAlerts()
+        }
+
+        /** Debug seam: clear and report whether a live service handled it. */
+        fun debugClearAlerts(): Boolean {
+            val live = instance ?: return false
+            live.clearPostedAlerts()
+            return true
+        }
+
+        /** Debug seam: post a synthetic alert through the live service. */
+        fun debugPostAlert(sessionId: String): Boolean {
+            val live = instance ?: return false
+            live.watch.onEvent("api-session/status", listOf(sessionId, true))
+            live.watch.onEvent("api-session/status", listOf(sessionId, false))
+            return true
+        }
 
         fun start(context: Context) {
             val intent = Intent(context, HostWatchService::class.java)

@@ -84,15 +84,18 @@ class MainActivity : AppCompatActivity() {
 
         /** The plugin's `config.cookieName` (primary source; user-configurable). */
         private const val DEVICE_COOKIE = "dsh_pair"
-        private const val WATCH_PREFS = "dsh_remote_watch"
-        private const val KEY_WATCH_ENABLED = "watch_enabled"
         private const val KEY_CONSENT_SHOWN = "watch_consent_shown"
+        private const val KEY_BATTERY_ASKED = "battery_exemption_asked"
 
         /** Where the floating options ball was last dropped. */
         private const val BALL_PREFS = "dsh_remote_ball"
         private const val BALL_KEY_X = "x"
         private const val BALL_KEY_Y = "y"
         private const val BALL_ALPHA = 0.5f
+
+        /** Background-alert preference; BootReceiver reads these too. */
+        const val WATCH_PREFS = "dsh_remote_watch"
+        const val KEY_WATCH_ENABLED = "watch_enabled"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -134,6 +137,17 @@ class MainActivity : AppCompatActivity() {
         } else {
             loadHome(host)
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // The app is in front of the user now, so anything the notifications
+        // were telling them about is on screen. Leaving them would accumulate
+        // stale "回复完成" entries for sessions already read.
+        //
+        // Routed through the service, which owns the record of what it posted;
+        // cancelling by enumeration is not an option (see NotificationHelper).
+        HostWatchService.clearAlerts(this)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -239,8 +253,10 @@ class MainActivity : AppCompatActivity() {
         val slop = android.view.ViewConfiguration.get(this).scaledTouchSlop
         var downX = 0f
         var downY = 0f
-        var startLeft = 0
-        var startTop = 0
+
+        /** Where the ball sat (screen space) when this gesture started. */
+        var startScreenX = 0f
+        var startScreenY = 0f
         var dragging = false
         var moved = false
 
@@ -254,8 +270,8 @@ class MainActivity : AppCompatActivity() {
                 android.view.MotionEvent.ACTION_DOWN -> {
                     downX = event.rawX
                     downY = event.rawY
-                    startLeft = view.left
-                    startTop = view.top
+                    startScreenX = view.x
+                    startScreenY = view.y
                     dragging = true
                     moved = false
                     // Keep the parent from stealing the gesture mid-drag.
@@ -270,7 +286,7 @@ class MainActivity : AppCompatActivity() {
                         moved = true
                         view.alpha = 0.85f
                     }
-                    if (moved) moveBallTo(startLeft + dx.toInt(), startTop + dy.toInt())
+                    if (moved) placeBall(startScreenX + dx, startScreenY + dy)
                     // Consume the gesture once it is a drag, so it never also
                     // reads as a tap (which would open the menu on every move).
                     moved
@@ -292,23 +308,41 @@ class MainActivity : AppCompatActivity() {
         ball.setOnClickListener { showOptions() }
     }
 
-    /** Move the ball to an absolute position, kept fully on screen. */
-    private fun moveBallTo(left: Int, top: Int) {
+    /**
+     * Put the ball at a position in **screen** coordinates, kept on screen.
+     *
+     * Uses translation rather than `x`/`y`: this view is anchored to the parent
+     * with `top|end` constraints, so ConstraintLayout re-places it on every
+     * layout pass and silently discards any `x`/`y` written directly. That is
+     * what made a second drag start from the constraint position (top-right)
+     * instead of where the user had left the ball. Translation is an offset
+     * applied after layout, so it survives.
+     *
+     * @param screenX - desired left edge in screen coordinates.
+     * @param screenY - desired top edge in screen coordinates.
+     */
+    private fun placeBall(screenX: Float, screenY: Float) {
         val ball = binding.btnOptions
         val parent = binding.root
         val margin = (8 * resources.displayMetrics.density).toInt()
-        val maxLeft = (parent.width - ball.width - margin).coerceAtLeast(0)
-        val maxTop = (parent.height - ball.height - margin).coerceAtLeast(0)
-        ball.x = left.coerceIn(0, maxLeft).toFloat()
-        ball.y = top.coerceIn(0, maxTop).toFloat()
+        val maxX = (parent.width - ball.width - margin).coerceAtLeast(0).toFloat()
+        val maxY = (parent.height - ball.height - margin).coerceAtLeast(0).toFloat()
+
+        val clampedX = screenX.coerceIn(0f, maxX)
+        val clampedY = screenY.coerceIn(0f, maxY)
+        // The untranslated origin is derived from translation itself, so the
+        // ball can never drift when the anchors are re-resolved.
+        ball.translationX = clampedX - (ball.x - ball.translationX)
+        ball.translationY = clampedY - (ball.y - ball.translationY)
     }
 
     private fun applySavedBallPosition() {
         val prefs = getSharedPreferences(BALL_PREFS, Context.MODE_PRIVATE)
         if (!prefs.contains(BALL_KEY_X)) return
-        // Layout must have happened before the constraints can be overridden.
+        // The anchors resolve during the first layout, so the offset can only be
+        // applied once the parent has a size.
         binding.btnOptions.post {
-            moveBallTo(prefs.getInt(BALL_KEY_X, 0), prefs.getInt(BALL_KEY_Y, 0))
+            placeBall(prefs.getInt(BALL_KEY_X, 0).toFloat(), prefs.getInt(BALL_KEY_Y, 0).toFloat())
         }
     }
 
@@ -543,20 +577,64 @@ class MainActivity : AppCompatActivity() {
      * Explain the unavoidable permanent notification once. Android requires a
      * foreground service for background sockets, so this is an informed-consent
      * prompt rather than an optional nicety.
+     *
+     * The second half of the prompt is the battery-optimisation exemption,
+     * because it is the difference between the watcher surviving and not: OEM
+     * builds (vivo, Xiaomi, Huawei, OPPO) freeze or kill background apps
+     * aggressively, and a Doze-restricted app loses both the socket and the
+     * heartbeat. Declining leaves the app fully usable, just without reliable
+     * background alerts.
      */
     private fun maybeShowWatchConsent() {
         val prefs = getSharedPreferences(WATCH_PREFS, Context.MODE_PRIVATE)
-        if (prefs.getBoolean(KEY_CONSENT_SHOWN, false)) return
+        if (prefs.getBoolean(KEY_CONSENT_SHOWN, false)) {
+            // Already explained once; still chase the exemption if it is missing,
+            // since a battery-saver reset silently drops it.
+            maybeRequestBatteryExemption()
+            return
+        }
         prefs.edit().putBoolean(KEY_CONSENT_SHOWN, true).apply()
         MaterialAlertDialogBuilder(this)
             .setTitle(R.string.watch_toggle_title)
             .setMessage(R.string.watch_toggle_message)
-            .setPositiveButton(R.string.watch_keep, null)
+            .setPositiveButton(R.string.watch_keep) { _, _ -> maybeRequestBatteryExemption() }
             .setNegativeButton(R.string.watch_disable) { _, _ ->
                 setWatchEnabled(false)
                 HostWatchService.stop(this)
                 Toast.makeText(this, R.string.watch_off_toast, Toast.LENGTH_SHORT).show()
             }
+            .show()
+    }
+
+    /** Ask to be excluded from battery optimisation, once per install. */
+    private fun maybeRequestBatteryExemption() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
+        val power = getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager ?: return
+        if (power.isIgnoringBatteryOptimizations(packageName)) return
+
+        val prefs = getSharedPreferences(WATCH_PREFS, Context.MODE_PRIVATE)
+        if (prefs.getBoolean(KEY_BATTERY_ASKED, false)) return
+        prefs.edit().putBoolean(KEY_BATTERY_ASKED, true).apply()
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.battery_title)
+            .setMessage(R.string.battery_message)
+            .setPositiveButton(R.string.battery_allow) { _, _ ->
+                try {
+                    startActivity(
+                        Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                            .setData(android.net.Uri.parse("package:$packageName"))
+                    )
+                } catch (e: Exception) {
+                    // Some OEM builds block the direct request; the list works.
+                    try {
+                        startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                    } catch (_: Exception) {
+                        Toast.makeText(this, R.string.battery_open_failed, Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+            .setNegativeButton(R.string.update_later, null)
             .show()
     }
 

@@ -15,6 +15,8 @@
     <!-- Background watcher: keeps the mux socket and presence heartbeat alive. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- Restart the watcher after a reboot and after an in-app update. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
         android:name=".RemoteApplication"
@@ -107,6 +109,17 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/watch_widget_info" />
+        </receiver>
+
+        <!-- Restarts the watcher after a reboot / app update. -->
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="false"
+            android:enabled="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
         </receiver>
 
         <!-- Exposes the downloaded update APK to the system installer. -->

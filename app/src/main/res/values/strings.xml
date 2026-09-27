@@ -85,6 +85,10 @@
     <string name="watch_keep">保持开启</string>
     <string name="watch_disable">关闭后台提醒</string>
     <string name="watch_off_toast">已关闭后台提醒</string>
+    <string name="battery_title">允许后台常驻</string>
+    <string name="battery_message">手机厂商的省电策略会在息屏后冻结或杀掉后台应用，导致后台提醒断开、主机侧也看不到本机在线。\n\n请把 DSH Remote 加入「不优化电池」名单（或系统设置里的「自启动 / 后台运行」白名单）。</string>
+    <string name="battery_allow">去设置</string>
+    <string name="battery_open_failed">无法打开电池设置，请手动到系统设置里允许后台运行</string>
     <string name="notify_permission_denied">未授予通知权限，后台提醒已停用</string>
     <string name="notify_open_fallback">请在工作区中打开会话 %1$s</string>
 

@@ -179,6 +179,38 @@ class NotificationHelper(private val context: Context) {
             .setContentTitle(title)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
 
+    /**
+     * Drop the alerts the app posted, keeping the foreground notice.
+     *
+     * Alerts are about things the user has not seen yet, so they are cleared
+     * once the app is actually open: by then the result is on screen and a
+     * leftover "回复完成" for a session already read is just stale noise. The
+     * foreground notice is deliberately spared — it is the service's required
+     * presence notification, not an alert.
+     *
+     * @param sessionAlertIds - notification ids of session alerts, supplied by
+     *   the caller. They cannot be discovered here: `activeNotifications` is
+     *   documented to return an empty list on API 31+, verified returning zero
+     *   on Android 12, so enumeration-based clearing silently does nothing.
+     */
+    fun clearAlerts(sessionAlertIds: List<Int> = emptyList()) {
+        try {
+            manager.cancel(ID_NEEDS_YOU)
+            manager.cancel(ID_REVOKED)
+            for (offset in 0 until TRANSPORT_ID_SLOTS) {
+                manager.cancel(ID_TRANSPORT_BASE + offset)
+            }
+            for (id in sessionAlertIds) {
+                manager.cancel(id)
+                // The error variant is posted one id higher.
+                manager.cancel(id + 1)
+            }
+            Log.i(TAG, "cleared alerts (${sessionAlertIds.size} session alert(s))")
+        } catch (e: Exception) {
+            Log.w(TAG, "cannot clear alerts", e)
+        }
+    }
+
     private fun post(id: Int, notification: Notification) {
         // Posting to a channel that does not exist drops the notification
         // silently, and AgentWatch can post before the foreground service ever
@@ -218,6 +250,9 @@ class NotificationHelper(private val context: Context) {
         const val ID_NEEDS_YOU = 1002
         const val ID_REVOKED = 1003
         const val ID_TRANSPORT_BASE = 1100
+
+        /** `notifyTransport` spreads ids over `idKey.hashCode() and 0xFF`. */
+        const val TRANSPORT_ID_SLOTS = 256
         const val KIND_APPROVAL = "approval"
     }
 }

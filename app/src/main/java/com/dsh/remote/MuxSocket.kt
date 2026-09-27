@@ -33,6 +33,18 @@ object MuxSocket {
          * Block until one text message arrives; returns null for frames that
          * carry no application payload (ping/pong handled internally).
          */
+        /**
+         * Block until one text message arrives; returns null for frames that
+         * carry no application payload (ping/pong handled internally).
+         *
+         * @throws java.net.SocketTimeoutException when nothing arrives within
+         *   the socket's read timeout. That is deliberate: a half-open
+         *   connection (the phone slept, or the network changed underneath)
+         *   never reports an error on its own, so a blocking read with no
+         *   timeout leaves the caller believing it is connected to a socket
+         *   that can never deliver again. The caller treats the timeout as a
+         *   dead link and reconnects.
+         */
         fun readText(): String? {
             while (true) {
                 val first = input.read()
@@ -115,6 +127,16 @@ object MuxSocket {
     private val RANDOM = SecureRandom()
 
     /**
+     * How long a read may stay silent before the link is presumed dead.
+     *
+     * The host pushes an event only when something happens in a session, so
+     * silence is normal; this only has to be short enough that a half-open
+     * socket (phone slept, network changed) is noticed and reconnected in
+     * reasonable time.
+     */
+    private const val READ_TIMEOUT_MS = 120_000
+
+    /**
      * Open one upgraded socket.
      *
      * @param url - `ws://` or `wss://` URL (the caller converts an http(s) host
@@ -172,6 +194,10 @@ object MuxSocket {
             socket.close()
             throw ClosedException("handshake rejected: ${statusLine.trim()}")
         }
+        // Frames arrive only when the host has an event, which can be minutes
+        // apart, so this is a liveness ceiling rather than an expected cadence:
+        // past it the link is presumed dead and the service reconnects.
+        socket.soTimeout = READ_TIMEOUT_MS
         val expected = Base64.encodeToString(
             MessageDigest.getInstance("SHA-1").digest(
                 (keyHeader + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").toByteArray(Charsets.US_ASCII)
