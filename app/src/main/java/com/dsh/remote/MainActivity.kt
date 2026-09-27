@@ -87,6 +87,12 @@ class MainActivity : AppCompatActivity() {
         private const val WATCH_PREFS = "dsh_remote_watch"
         private const val KEY_WATCH_ENABLED = "watch_enabled"
         private const val KEY_CONSENT_SHOWN = "watch_consent_shown"
+
+        /** Where the floating options ball was last dropped. */
+        private const val BALL_PREFS = "dsh_remote_ball"
+        private const val BALL_KEY_X = "x"
+        private const val BALL_KEY_Y = "y"
+        private const val BALL_ALPHA = 0.5f
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -212,8 +218,106 @@ class MainActivity : AppCompatActivity() {
         }
         // The visible options entry. Long-press Back stays as a secondary path
         // for three-button navigation, but it is unreachable under gesture
-        // navigation, so this button is the primary one.
-        binding.btnOptions.setOnClickListener { showOptions() }
+        // navigation, so the floating ball is the primary one.
+        makeOptionsBallDraggable()
+    }
+
+    /* ── The floating options ball ──────────────────────────────────── */
+
+    /**
+     * Lets the user drag [binding.btnOptions] anywhere on screen and remembers
+     * where they left it.
+     *
+     * A fixed corner is wrong here because the GUI has its own controls in
+     * every corner (sidebar toggle top-left, window buttons top-right, composer
+     * bottom), and which one is free depends on the layout. Dragging is the
+     * only placement that works for everyone, and mirrors the plugin's own
+     * draggable whale button.
+     */
+    private fun makeOptionsBallDraggable() {
+        val ball = binding.btnOptions
+        val slop = android.view.ViewConfiguration.get(this).scaledTouchSlop
+        var downX = 0f
+        var downY = 0f
+        var startLeft = 0
+        var startTop = 0
+        var dragging = false
+        var moved = false
+
+        applySavedBallPosition()
+
+        // Touch listener first: Android dispatches to the most recently
+        // registered listener, so registering it after the click listener let
+        // the click win and every drag opened the menu.
+        ball.setOnTouchListener { view, event ->
+            when (event.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    downX = event.rawX
+                    downY = event.rawY
+                    startLeft = view.left
+                    startTop = view.top
+                    dragging = true
+                    moved = false
+                    // Keep the parent from stealing the gesture mid-drag.
+                    view.parent?.requestDisallowInterceptTouchEvent(true)
+                    false
+                }
+                android.view.MotionEvent.ACTION_MOVE -> {
+                    if (!dragging) return@setOnTouchListener false
+                    val dx = event.rawX - downX
+                    val dy = event.rawY - downY
+                    if (!moved && (kotlin.math.abs(dx) > slop || kotlin.math.abs(dy) > slop)) {
+                        moved = true
+                        view.alpha = 0.85f
+                    }
+                    if (moved) moveBallTo(startLeft + dx.toInt(), startTop + dy.toInt())
+                    // Consume the gesture once it is a drag, so it never also
+                    // reads as a tap (which would open the menu on every move).
+                    moved
+                }
+                android.view.MotionEvent.ACTION_UP,
+                android.view.MotionEvent.ACTION_CANCEL -> {
+                    dragging = false
+                    view.parent?.requestDisallowInterceptTouchEvent(false)
+                    view.alpha = BALL_ALPHA
+                    // A drag only moves the ball; it must not open the menu.
+                    // A tap is left unconsumed so the click listener fires.
+                    if (moved) saveBallPosition()
+                    moved
+                }
+                else -> false
+            }
+        }
+        // Registered last so the touch listener above sees the gesture first.
+        ball.setOnClickListener { showOptions() }
+    }
+
+    /** Move the ball to an absolute position, kept fully on screen. */
+    private fun moveBallTo(left: Int, top: Int) {
+        val ball = binding.btnOptions
+        val parent = binding.root
+        val margin = (8 * resources.displayMetrics.density).toInt()
+        val maxLeft = (parent.width - ball.width - margin).coerceAtLeast(0)
+        val maxTop = (parent.height - ball.height - margin).coerceAtLeast(0)
+        ball.x = left.coerceIn(0, maxLeft).toFloat()
+        ball.y = top.coerceIn(0, maxTop).toFloat()
+    }
+
+    private fun applySavedBallPosition() {
+        val prefs = getSharedPreferences(BALL_PREFS, Context.MODE_PRIVATE)
+        if (!prefs.contains(BALL_KEY_X)) return
+        // Layout must have happened before the constraints can be overridden.
+        binding.btnOptions.post {
+            moveBallTo(prefs.getInt(BALL_KEY_X, 0), prefs.getInt(BALL_KEY_Y, 0))
+        }
+    }
+
+    private fun saveBallPosition() {
+        val ball = binding.btnOptions
+        getSharedPreferences(BALL_PREFS, Context.MODE_PRIVATE).edit()
+            .putInt(BALL_KEY_X, ball.x.toInt())
+            .putInt(BALL_KEY_Y, ball.y.toInt())
+            .apply()
     }
 
     private fun loadHome(host: String) {

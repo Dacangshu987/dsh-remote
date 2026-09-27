@@ -24,3 +24,6 @@ keystore.properties
 # OS
 .DS_Store
 Thumbs.db
+
+# Scratch files from local test runs (screenshots, adb dumps, probe scripts)
+_*
