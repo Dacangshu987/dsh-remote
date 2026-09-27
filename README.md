@@ -70,6 +70,18 @@ cd <项目根目录>
 
 或用 Android Studio 直接打开根目录，等待 Gradle 同步后 Run `app`。
 
+### ⚠️ 签名：只安装 release 包
+
+`assembleRelease` 用仓库 `keystore/dsh-remote.jks` 签名（`CN=DSH Remote, O=DSH, C=CN`），`assembleDebug` 用 Android 默认调试密钥签名（`CN=Android Debug`）。**两者不能互相覆盖安装** —— 在已装 debug 版的手机上安装 release 包会报「与现有安装包冲突」（`INSTALL_FAILED_UPDATE_INCOMPATIBLE`）。
+
+因此：
+
+- **发布/自更新只分发 release 包**（`app-release.apk`），App 内的更新下载的也是它。
+- **不要在已经装了 release 包的设备上安装 debug 包**；反之亦然。
+- 已经装错时，先卸载一次再装另一个（卸载会清掉配对与设置，需重新配对）。
+
+调试包只在需要 `DebugCheckReceiver` 诊断或 WebView 远程调试时才用，且应装在另一台设备上。
+
 > 仓库未附带 `gradle-wrapper.jar`（生成环境无 Gradle 工具链）。`gradle-wrapper.properties` 已配置 Gradle 8.7；Android Studio 会提示自动下载 wrapper。若用纯命令行，先装 Gradle 8.7，再执行 `gradle wrapper` 生成 wrapper，或用已安装的 `gradle assembleDebug` 直接构建。
 
 ## 使用步骤
