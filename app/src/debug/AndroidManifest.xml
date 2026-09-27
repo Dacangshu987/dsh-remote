@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug-only additions: diagnostics receiver. Never ships in release. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <receiver
+            android:name=".DebugCheckReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.dsh.remote.SELFCHECK" />
+                <action android:name="com.dsh.remote.COOKIECHECK" />
+                <action android:name="com.dsh.remote.FAKEEVENT" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

@@ -3,7 +3,7 @@ package com.dsh.remote
 import java.net.URL
 
 /**
- * First-run pairing against the DSH remote-web-ui plugin (0.3.x).
+ * First-run pairing against the DSH remote-web-ui plugin (0.4.x).
  *
  * A pairing link is the QR content minted by the desktop remote panel and
  * looks like `http://<host>:<port>/pair-accept?pair=<token>`. The app only
@@ -17,7 +17,6 @@ object PairingController {
     data class PairTarget(
         val origin: String,  // e.g. http://192.168.1.100:3080
         val pairUrl: String, // full link to open in the WebView
-        val token: String,
     )
 
     /** Parse a pairing link into its origin + the URL to load. */
@@ -34,7 +33,7 @@ object PairingController {
             val scheme = url.protocol.lowercase()
             val port = if (url.port != -1) ":${url.port}" else ""
             val origin = "$scheme://${url.host}$port"
-            PairTarget(origin, trimmed, token)
+            PairTarget(origin, trimmed)
         } catch (_: Exception) {
             null
         }

@@ -1,3 +1,2 @@
-# Keep Kotlin data classes and lambdas intact (defaults are fine for this app).
--keepattributes *Annotation*
--dontwarn okhttp3.**
+# R8 shrinking is disabled for the release build type (isMinifyEnabled = false),
+# so no keep rules are needed here. Add them only if minification is turned on.

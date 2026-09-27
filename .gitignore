@@ -1,4 +1,4 @@
-﻿# Gradle
+# Gradle
 .gradle/
 build/
 
@@ -16,6 +16,10 @@ keystore.properties
 
 # Logs
 *.log
+
+# Built APKs copied to the repo root for local install/upload (never committed;
+# the released binary lives in the GitHub release assets)
+/*.apk
 
 # OS
 .DS_Store

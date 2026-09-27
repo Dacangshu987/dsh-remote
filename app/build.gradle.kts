@@ -19,8 +19,10 @@ android {
         applicationId = "com.dsh.remote"
         minSdk = 26   // Android 8.0; enables adaptive-icon XML without binary PNGs
         targetSdk = 34
-        versionCode = 4
-        versionName = "1.1.0"
+        versionCode = 5
+        versionName = "1.2.0"
+        // ic_icon_vector.xml originates from an SVG and needs the AndroidX vector
+        // decoder for consistent rendering across API levels.
         vectorDrawables { useSupportLibrary = true }
     }
 

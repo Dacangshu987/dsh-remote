@@ -6,48 +6,15 @@
     android:layout_height="match_parent"
     tools:context=".MainActivity">
 
-    <com.google.android.material.appbar.AppBarLayout
-        android:id="@+id/appBar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="@color/accent"
-        app:layout_constraintTop_toTopOf="parent">
-
-        <com.google.android.material.appbar.MaterialToolbar
-            android:id="@+id/toolbar"
-            android:layout_width="match_parent"
-            android:layout_height="?attr/actionBarSize"
-            android:background="@color/accent"
-            app:title="@string/app_name"
-            app:titleTextColor="@color/surface">
-
-            <ImageView
-                android:id="@+id/btnSettings"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:layout_gravity="end"
-                android:padding="12dp"
-                android:contentDescription="@string/settings_title"
-                android:src="@drawable/ic_settings" />
-
-            <ImageView
-                android:id="@+id/btnRefresh"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:layout_gravity="end"
-                android:padding="12dp"
-                android:contentDescription="@string/refresh"
-                android:src="@drawable/ic_refresh" />
-
-        </com.google.android.material.appbar.MaterialToolbar>
-    </com.google.android.material.appbar.AppBarLayout>
-
+    <!--
+        No SwipeRefreshLayout here on purpose: a pull-down gesture fights the
+        GUI's own scrolling and text selection (and kept firing when the intent
+        was to select text), so refresh lives in the options menu instead.
+    -->
     <WebView
         android:id="@+id/webView"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/appBar" />
+        android:layout_height="match_parent" />
 
     <!-- Friendly "cannot reach host" overlay, hidden by default. -->
     <LinearLayout
@@ -87,6 +54,19 @@
             android:textColor="#C4C7D8"
             android:textSize="14sp" />
 
+        <!-- Concrete diagnostics: which host failed, whether the phone has a
+             network, and when the host last answered. Filled at runtime. -->
+        <TextView
+            android:id="@+id/errorStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:gravity="center"
+            android:lineSpacingExtra="3dp"
+            android:textColor="#8A8FA8"
+            android:textSize="12sp"
+            tools:text="主机：http://192.168.1.100:3080\n网络：手机无网络连接\n上次成功连接：2026-09-27 21:08" />
+
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnRetry"
             android:layout_width="match_parent"
@@ -119,5 +99,36 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
         app:trackThickness="6dp" />
+
+    <!--
+        A visible entry for the app's own options (re-pair, background alerts,
+        app lock). This used to be a long-press on Back, which is unreachable
+        under gesture navigation, plus a three-tap on the error page, which only
+        exists when the host is down — so there was effectively no way in.
+        Small and semi-transparent to stay out of the GUI's way.
+    -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnOptions"
+        style="@style/Widget.MaterialComponents.Button.TextButton"
+        android:layout_width="wrap_content"
+        android:layout_height="30dp"
+        android:layout_margin="4dp"
+        android:alpha="0.5"
+        android:contentDescription="@string/options_title"
+        android:fontFamily="sans-serif"
+        android:insetTop="0dp"
+        android:insetBottom="0dp"
+        android:minWidth="0dp"
+        android:minHeight="0dp"
+        android:paddingStart="10dp"
+        android:paddingEnd="10dp"
+        android:text="⋯"
+        android:textColor="@color/text_primary"
+        android:textSize="20sp"
+        app:backgroundTint="@color/surface"
+        app:cornerRadius="15dp"
+        app:elevation="0dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
